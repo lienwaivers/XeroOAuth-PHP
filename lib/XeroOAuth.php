@@ -5,6 +5,9 @@ if (! class_exists ( 'OAuthSimple' )) {
 	require_once __DIR__ . DIRECTORY_SEPARATOR . 'OAuthSimple.php';
 }
 
+use GuzzleHttp\Client;
+use GuzzleHttp\RequestOptions;
+
 /**
  * Define a custom Exception for easy trap and detection
  */
@@ -15,7 +18,7 @@ class XeroOAuth {
 	var $_xero_consumer_options;
 	var $_action;
 	var $_nonce_chars;
-	
+
 	/**
 	 * Creates a new XeroOAuth object
 	 *
@@ -28,7 +31,7 @@ class XeroOAuth {
 		$this->auto_fixed_time = false;
 		$this->buffer = null;
 		$this->request_params = array();
-		
+
 		if (! empty ( $config ['application_type'] )) {
 			switch ($config ['application_type']) {
 				case "Public" :
@@ -36,7 +39,7 @@ class XeroOAuth {
 							'xero_url' => 'https://api.xero.com/',
 							'site' => 'https://api.xero.com',
 							'authorize_url' => 'https://api.xero.com/oauth/Authorize',
-							'signature_method' => 'HMAC-SHA1' 
+							'signature_method' => 'HMAC-SHA1'
 					);
 					break;
 				case "Private" :
@@ -44,7 +47,7 @@ class XeroOAuth {
 							'xero_url' => 'https://api.xero.com/',
 							'site' => 'https://api.xero.com',
 							'authorize_url' => 'https://api.xero.com/oauth/Authorize',
-							'signature_method' => 'RSA-SHA1' 
+							'signature_method' => 'RSA-SHA1'
 					);
 					break;
 				case "Partner" :
@@ -52,22 +55,22 @@ class XeroOAuth {
 							'xero_url' => 'https://api.xero.com/',
 							'site' => 'https://api.xero.com',
 							'authorize_url' => 'https://api.xero.com/oauth/Authorize',
-							'signature_method' => 'RSA-SHA1' 
+							'signature_method' => 'RSA-SHA1'
 					);
 					break;
 			}
 		}
-		
+
 		$this->_xero_consumer_options = array (
 				'request_token_path' => 'oauth/RequestToken',
 				'access_token_path' => 'oauth/AccessToken',
-				'authorize_path' => 'oauth/Authorize' 
+				'authorize_path' => 'oauth/Authorize'
 		);
-		
+
 		// Remove forced dependency on BASE_PATH constant.
 		// Note that __DIR__ is PHP 5.3 and above only.
 		$base_path = defined ( 'BASE_PATH' ) ? BASE_PATH : dirname ( __DIR__ );
-		
+
 		$this->_xero_curl_options = array ( // you probably don't want to change any of these curl values
 				'curl_connecttimeout' => 30,
 				'curl_timeout' => 20,
@@ -84,32 +87,12 @@ class XeroOAuth {
 				'curl_proxy' => false, // really you don't want to use this if you are using streaming
 				'curl_proxyuserpwd' => false, // format username:password for proxy, if required
 				'curl_encoding' => '', // leave blank for all supported formats, else use gzip, deflate, identity
-				'curl_verbose' => true 
+            'curl_verbose' => false
 		);
-		
+
 		$this->config = array_merge ( $this->_xero_defaults, $this->_xero_consumer_options, $this->_xero_curl_options, $config );
 	}
-	
-	/**
-	 * Utility function to parse the returned curl headers and store them in the
-	 * class array variable.
-	 *
-	 * @param object $ch
-	 *        	curl handle
-	 * @param string $header
-	 *        	the response headers
-	 * @return the string length of the header
-	 */
-	private function curlHeader($ch, $header) {
-		$i = strpos ( $header, ':' );
-		if (! empty ( $i )) {
-			$key = str_replace ( '-', '_', strtolower ( substr ( $header, 0, $i ) ) );
-			$value = trim ( substr ( $header, $i + 2 ) );
-			$this->response ['headers'] [$key] = $value;
-		}
-		return strlen ( $header );
-	}
-	
+
 	/**
 	 * Utility function to parse the returned curl buffer and store them until
 	 * an EOL is found.
@@ -129,25 +112,25 @@ class XeroOAuth {
 			$this->buffer .= $data;
 			return $l;
 		}
-		
+
 		$buffered = explode ( $this->config ['streaming_eol'], $data );
 		$content = $this->buffer . $buffered [0];
-		
+
 		$this->metrics ['tweets'] ++;
 		$this->metrics ['bytes'] += strlen ( $content );
-		
+
 		if (! function_exists ( $this->config ['streaming_callback'] ))
 			return 0;
-		
+
 		$metrics = $this->update_metrics ();
 		$stop = call_user_func ( $this->config ['streaming_callback'], $content, strlen ( $content ), $metrics );
 		$this->buffer = $buffered [1];
 		if ($stop)
 			return 0;
-		
+
 		return $l;
 	}
-	
+
 	/**
 	 * Extracts and decodes OAuth parameters from the passed string
 	 *
@@ -166,7 +149,7 @@ class XeroOAuth {
 		}
 		return $decoded;
 	}
-	
+
 	/**
 	 * Encodes the string or array passed in a way compatible with OAuth.
 	 * If an array is passed each array value will will be encoded.
@@ -179,21 +162,21 @@ class XeroOAuth {
 		if (is_array ( $data )) {
 			return array_map ( array (
 					$this,
-					'safe_encode' 
+					'safe_encode'
 			), $data );
 		} else if (is_scalar ( $data )) {
 			return str_ireplace ( array (
 					'+',
-					'%7E' 
+					'%7E'
 			), array (
 					' ',
-					'~' 
+					'~'
 			), rawurlencode ( $data ) );
 		} else {
 			return '';
 		}
 	}
-	
+
 	/**
 	 * Decodes the string or array from it's URL encoded form
 	 * If an array is passed each array value will will be decoded.
@@ -206,7 +189,7 @@ class XeroOAuth {
 		if (is_array ( $data )) {
 			return array_map ( array (
 					$this,
-					'safe_decode' 
+					'safe_decode'
 			), $data );
 		} else if (is_scalar ( $data )) {
 			return rawurldecode ( $data );
@@ -214,7 +197,7 @@ class XeroOAuth {
 			return '';
 		}
 	}
-	
+
 	/**
 	 * Prepares the HTTP method for use in the base string by converting it to
 	 * uppercase.
@@ -227,100 +210,95 @@ class XeroOAuth {
 	private function prepare_method($method) {
 		$this->method = strtoupper ( $method );
 	}
-	
+
 	/**
-	 * Makes a curl request.
+	 * Makes a Guzzle request.
 	 * Takes no parameters as all should have been prepared
 	 * by the request method
 	 *
 	 * @return void response data is stored in the class variable 'response'
 	 */
-	private function curlit() {
+    private function guzzleit() {
 		$this->request_params = array();
-	
-		
-		// configure curl
-		$c = curl_init ();
+
+
+        // configure Guzzle
 		$useragent = (isset ( $this->config ['user_agent'] )) ? (empty ( $this->config ['user_agent'] ) ? 'XeroOAuth-PHP' : $this->config ['user_agent']) : 'XeroOAuth-PHP';
-		curl_setopt_array ( $c, array (
-				CURLOPT_USERAGENT => $useragent,
-				CURLOPT_CONNECTTIMEOUT => $this->config ['curl_connecttimeout'],
-				CURLOPT_TIMEOUT => $this->config ['curl_timeout'],
-				CURLOPT_RETURNTRANSFER => TRUE,
-				CURLOPT_SSL_VERIFYPEER => $this->config ['curl_ssl_verifypeer'],
-				CURLOPT_CAINFO => $this->config ['curl_cainfo'],
-				CURLOPT_SSL_VERIFYHOST => $this->config ['curl_ssl_verifyhost'],
-				CURLOPT_FOLLOWLOCATION => $this->config ['curl_followlocation'],
-				CURLOPT_PROXY => $this->config ['curl_proxy'],
-				CURLOPT_ENCODING => $this->config ['curl_encoding'],
-				CURLOPT_URL => $this->sign ['signed_url'],
-				CURLOPT_VERBOSE => $this->config ['curl_verbose'],
-				// process the headers
-				CURLOPT_HEADERFUNCTION => array (
-						$this,
-						'curlHeader' 
-				),
-				CURLOPT_HEADER => FALSE,
-				CURLINFO_HEADER_OUT => TRUE 
-		) );
-		
+        $this->headers['User-Agent'] = $useragent;
+
+        // No Guzzle equivalents for CURLOPT_HEADER, CURLINFO_HEADER_OUT equivalents
+        $options = [
+            RequestOptions::CONNECT_TIMEOUT => $this->config ['curl_connecttimeout']
+            , RequestOptions::TIMEOUT => $this->config ['curl_timeout']
+            , RequestOptions::VERIFY => self::isAppEngine() ? false : ($this->config ['curl_cainfo'] ?: $this->config ['curl_ssl_verifypeer'])
+            , RequestOptions::ALLOW_REDIRECTS => $this->config ['curl_followlocation']
+            , RequestOptions::PROXY => $this->config ['curl_proxy']
+            , RequestOptions::DECODE_CONTENT => strlen($this->config ['curl_encoding']) ? $this->config ['curl_encoding'] : true
+            , RequestOptions::DEBUG => $this->config ['curl_verbose']
+            , RequestOptions::HTTP_ERRORS => false
+        ];
+
+
 		/* ENTRUST CERTIFICATE DEPRECATED
 		if ($this->config ['application_type'] == "Partner") {
 			curl_setopt_array ( $c, array (
 					// ssl client cert options for partner apps
 					CURLOPT_SSLCERT => $this->config ['curl_ssl_cert'],
 					CURLOPT_SSLKEYPASSWD => $this->config ['curl_ssl_password'],
-					CURLOPT_SSLKEY => $this->config ['curl_ssl_key'] 
+					CURLOPT_SSLKEY => $this->config ['curl_ssl_key']
 			) );
 		}
 		*/
-		
-		if ($this->config ['curl_proxyuserpwd'] !== false)
-			curl_setopt ( $c, CURLOPT_PROXYUSERPWD, $this->config ['curl_proxyuserpwd'] );
-		
-		if (isset ( $this->config ['is_streaming'] )) {
+
+        // Guzzle PROXY option can be used to specify CURLOPT_PROXYUSERPWD (http://docs.guzzlephp.org/en/latest/request-options.html#proxy)
+
+        // TODO
+        /*
+        if (isset ($this->config ['is_streaming'])) {
 			// process the body
 			$this->response ['content-length'] = 0;
 			curl_setopt ( $c, CURLOPT_TIMEOUT, 0 );
 			curl_setopt ( $c, CURLOPT_WRITEFUNCTION, array (
 					$this,
-					'curlWrite' 
+                'curlWrite'
 			) );
 		}
-		
+        */
+
 		switch ($this->method) {
 			case 'GET' :
 				$contentLength = 0;
 				break;
-			case 'POST' :
-				curl_setopt ( $c, CURLOPT_POST, TRUE );
-				$post_body = $this->safe_encode ( $this->xml );
-				curl_setopt ( $c, CURLOPT_POSTFIELDS, $post_body );
-				$this->request_params ['xml'] = $post_body;
-				$contentLength = strlen ( $post_body );
-				$this->headers ['Content-Type'] = 'application/x-www-form-urlencoded';
-				
-				break;
-			case 'PUT' :
-				$fh = tmpfile();
-				if ($this->format == "file") {
-					$put_body = $this->xml;
-				} else {
-					$put_body = $this->safe_encode ( $this->xml );
-					$this->headers ['Content-Type'] = 'application/x-www-form-urlencoded';
-				}
-				fwrite ( $fh, $put_body );
-				rewind ( $fh );
-				curl_setopt ( $c, CURLOPT_PUT, true );
-				curl_setopt ( $c, CURLOPT_INFILE, $fh );
-				curl_setopt ( $c, CURLOPT_INFILESIZE, strlen ( $put_body ) );
-				$contentLength = strlen ( $put_body );
-				
-				break;
-			default :
-				curl_setopt ( $c, CURLOPT_CUSTOMREQUEST, $this->method );
+            // TODO
+            /*
+        case 'POST' :
+            curl_setopt ( $c, CURLOPT_POST, TRUE );
+            $post_body = $this->safe_encode ( $this->xml );
+            curl_setopt ( $c, CURLOPT_POSTFIELDS, $post_body );
+            $this->request_params ['xml'] = $post_body;
+            $contentLength = strlen ( $post_body );
+            $this->headers ['Content-Type'] = 'application/x-www-form-urlencoded';
+
+            break;
+        case 'PUT' :
+            $fh = tmpfile();
+            if ($this->format == "file") {
+                $put_body = $this->xml;
+            } else {
+                $put_body = $this->safe_encode ( $this->xml );
+                $this->headers ['Content-Type'] = 'application/x-www-form-urlencoded';
+            }
+            fwrite ( $fh, $put_body );
+            rewind ( $fh );
+            curl_setopt ( $c, CURLOPT_PUT, true );
+            curl_setopt ( $c, CURLOPT_INFILE, $fh );
+            curl_setopt ( $c, CURLOPT_INFILESIZE, strlen ( $put_body ) );
+            $contentLength = strlen ( $put_body );
+
+            break;
+            */
 		}
-		
+
 		if (! empty ( $this->request_params )) {
 			// if not doing multipart we need to implode the parameters
 			if (! $this->config ['multipart']) {
@@ -329,48 +307,57 @@ class XeroOAuth {
 				}
 				$this->request_payload = implode ( '&', $ps );
 			}
-			curl_setopt ( $c, CURLOPT_POSTFIELDS, $this->request_payload);
+            // TODO
+            //curl_setopt ( $c, CURLOPT_POSTFIELDS, $this->request_payload);
 		} else {
 			// CURL will set length to -1 when there is no data
 			$this->headers ['Content-Length'] = $contentLength;
 		}
-		
+
 		$this->headers ['Expect'] = '';
-		
-		if (! empty ( $this->headers )) {
-			foreach ( $this->headers as $k => $v ) {
-				$headers [] = trim ( $k . ': ' . $v );
-			}
-			curl_setopt ( $c, CURLOPT_HTTPHEADER, $headers );
-		}
-		
+
+        $options[RequestOptions::HEADERS] = $this->headers;
+
 		if (isset ( $this->config ['prevent_request'] ) && false == $this->config ['prevent_request'])
 			return;
-			
-			// do it!
-		$response = curl_exec ( $c );
-		if ($response === false) {
+
+        // do it!
+        $client = new Client();
+        $response = $client->request($this->method, $this->sign ['signed_url'], $options);
+        // TODO
+        /*
+        if ($response === false) {
 			$response = 'Curl error: ' . curl_error ( $c );
 			$code = 1;
 		} else {
-			$code = curl_getinfo ( $c, CURLINFO_HTTP_CODE );
-		}
-		
-		$info = curl_getinfo ( $c );
-		
-		curl_close ( $c );
-		if (isset ( $fh )) {
-			fclose( $fh );
-		}
-		
-		// store the response
+        */
+            $code = $response->getStatusCode();
+        //}
+
+        // TODO
+        /*
+        $info = curl_getinfo($c);
+
+        curl_close($c);
+        if (isset ( $fh )) {
+            fclose( $fh );
+        }
+        */
+        $info = [];
+
+        $responseHeaders = $response->getHeaders();
+        array_walk($responseHeaders, function ($values, $header) {
+            $this->response['headers'][str_replace('-', '_', strtolower($header))] = implode(',', $values);
+        });
+
+        // store the response
 		$this->response ['code'] = $code;
-		$this->response ['response'] = $response;
+        $this->response ['response'] = (string)$response->getBody();
 		$this->response ['info'] = $info;
 		$this->response ['format'] = $this->format;
 		return $code;
 	}
-	
+
 	/**
 	 * Make an HTTP request using this library.
 	 * This method doesn't return anything.
@@ -384,14 +371,14 @@ class XeroOAuth {
 	 *        	the request parameters as an array of key=value pairs
 	 * @param string $format
 	 *        	the format of the response. Default json. Set to an empty string to exclude the format
-	 *        	
+	 *
 	 */
 	function request($method, $url, $params = array(), $xml = "", $format = 'xml') {
 		// removed these as function parameters for now
 		$useauth = true;
 		$multipart = false;
 		$this->headers = array ();
-		
+
 		if (isset ( $format )) {
 			switch ($format) {
 				case "pdf" :
@@ -406,20 +393,20 @@ class XeroOAuth {
 					break;
 			}
 		}
-		
+
 		if (isset ( $params ['If-Modified-Since'] )) {
 			$modDate = "If-Modified-Since: " . $params ['If-Modified-Since'];
 			$this->headers ['If-Modified-Since'] = $params ['If-Modified-Since'];
 		}
-		
+
 		if ($xml !== "") {
 			$xml = trim($xml);
 			$this->xml = $xml;
 		}
-		
+
 		if ($method == "POST")
 			$params ['xml'] = $xml;
-		
+
 		$this->prepare_method ( $method );
 		$this->config ['multipart'] = $multipart;
 		$this->url = $url;
@@ -429,11 +416,11 @@ class XeroOAuth {
 					'path' => $url,
 					'action' => $method,
 					'parameters' => array_merge ( $params, array (
-							'oauth_signature_method' => $this->config ['signature_method'] 
+							'oauth_signature_method' => $this->config ['signature_method']
 					) ),
-					'signatures' => $this->config 
+					'signatures' => $this->config
 			) );
-		} 
+		}
 
 		catch ( Exception $e ) {
 			$errorMessage = 'XeroOAuth::request() ' . $e->getMessage ();
@@ -442,9 +429,9 @@ class XeroOAuth {
 			return $this->response;
 		}
 		$this->format = $format;
-		
-		$curlRequest = $this->curlit ();
-		
+
+        $this->guzzleit();
+
 		if ($this->response ['code'] == 401 && isset ( $this->config ['session_handle'] )) {
 			if ((strpos ( $this->response ['response'], "oauth_problem=token_expired" ) !== false)) {
 				$this->response ['helper'] = "TokenExpired";
@@ -463,10 +450,10 @@ class XeroOAuth {
 			$this->response ['response'] = $errorMessage;
 			$this->response ['helper'] = "SetupIssue";
 		}
-		
+
 		return $this->response;
 	}
-	
+
 	/**
 	 * Convert the response into usable data
 	 *
@@ -492,7 +479,7 @@ class XeroOAuth {
 		}
 		return $theResponse;
 	}
-	
+
 	/**
 	 * Utility function to create the request URL in the requested format
 	 *
@@ -525,13 +512,13 @@ class XeroOAuth {
 			}
 			$this->config ['host'] = $this->config ['xero_url'] . $api_stem . '/' . $api_version . '/';
 		}
-		
+
 		return implode ( array (
 				$this->config ['host'],
-				$request 
+				$request
 		) );
 	}
-	
+
 	/**
 	 * Refreshes the access token for partner API type applications
 	 *
@@ -544,19 +531,19 @@ class XeroOAuth {
 	function refreshToken($accessToken, $sessionHandle) {
 		$code = $this->request ( 'GET', $this->url ( 'AccessToken', '' ), array (
 				'oauth_token' => $accessToken,
-				'oauth_session_handle' => $sessionHandle 
+				'oauth_session_handle' => $sessionHandle
 		) );
 		if ($this->response ['code'] == 200) {
-			
+
 			$response = $this->extract_params ( $this->response ['response'] );
-			
+
 			return $response;
 		} else {
 			$this->response ['helper'] = "TokenFatal";
 			return $this->response;
 		}
 	}
-	
+
 	/**
 	 * Returns the current URL.
 	 * This is instead of PHP_SELF which is unsafe
@@ -594,7 +581,7 @@ class XeroOAuth {
 	if (!$dropqs) return "{$url}?{$qs}";
 	  else return $url;
 	}
-	
+
 	/*
 	 * Run some basic checks on our config options etc to make sure all is ok
 	 */
@@ -618,9 +605,9 @@ class XeroOAuth {
 			}
 		}
 		*/
-		
+
 		if ($this->config ['application_type'] == 'Partner' || $this->config ['application_type'] == 'Private') {
-			
+
 			if (! file_exists ( $this->config ['rsa_public_key'] ))
 				$testOutput ['rsa_cert_error'] = "Can't read the self-signed SSL cert. Private and Partner API applications require a self-signed X509 cert http://developer.xero.com/documentation/advanced-docs/public-private-keypair/ \n";
 			if (file_exists ( $this->config ['rsa_public_key'] )) {
@@ -644,7 +631,17 @@ class XeroOAuth {
 				;
 			}
 		}
-		
+
 		return $testOutput;
 	}
+
+    /**
+     * Recommended way to check if script is running in Google App Engine:
+     * https://github.com/google/google-api-php-client/blob/master/src/Google/Client.php#L799
+     *
+     * @return bool Returns true if running in Google App Engine
+     */
+    private static function isAppEngine() {
+        return (isset($_SERVER['SERVER_SOFTWARE']) && strpos($_SERVER['SERVER_SOFTWARE'], 'Google App Engine') !== false);
+    }
 }
